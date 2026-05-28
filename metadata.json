@@ -1,0 +1,6 @@
+{
+  "name": "StudyAI",
+  "description": "Estude de forma mais inteligente com o poder do Gemini: gere resumos de estudo, crie flashcards inteligentes para revisão e elabore planos de estudo personalizados prontos para provas e concursos.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
