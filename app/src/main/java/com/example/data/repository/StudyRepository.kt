@@ -90,6 +90,25 @@ class StudyRepository(private val studyDao: StudyDao) {
         studyDao.insertSession(session)
     }
 
+    // All Flashcards
+    val allFlashcards: Flow<List<Flashcard>> = studyDao.getAllFlashcards()
+
+    // Edital Topics Transactions
+    fun getEditalTopicsForContest(contestId: Int): Flow<List<EditalTopic>> =
+        studyDao.getEditalTopicsForContest(contestId)
+
+    suspend fun insertEditalTopic(contestId: Int, title: String) {
+        studyDao.insertEditalTopic(EditalTopic(contestId = contestId, title = title))
+    }
+
+    suspend fun updateEditalTopicStatus(topicId: Int, status: Int) {
+        studyDao.updateEditalTopicStatus(topicId, status)
+    }
+
+    suspend fun deleteEditalTopicsForContest(contestId: Int) {
+        studyDao.deleteEditalTopicsForContest(contestId)
+    }
+
     // --- Gemini Generation Functions ---
 
     /**
@@ -190,6 +209,28 @@ class StudyRepository(private val studyDao: StudyDao) {
             responseString
         } else {
             getMockStudyPlanJson(topic, durationDays, level)
+        }
+    }
+
+    /**
+     * Answers a user question using the note content as context.
+     */
+    suspend fun askAboutNote(question: String, noteContext: String): String {
+        return if (GeminiClient.isApiKeyAvailable()) {
+            val systemInstruction = "Você é um tutor especialista que responde perguntas com base em um texto de estudo fornecido."
+            val prompt = """
+                Contexto do resumo de estudo:
+                ---
+                $noteContext
+                ---
+
+                Pergunta do estudante: "$question"
+
+                Responda de forma objetiva e direta com base no texto acima. Se a resposta não estiver no texto, indique claramente e complemente com seu conhecimento geral. Responda em Português do Brasil.
+            """.trimIndent()
+            GeminiClient.fetchContent(prompt, systemInstruction)
+        } else {
+            "[Modo offline] Configure a chave da API Gemini em Configurações para usar o Q&A inteligente. Sua pergunta foi: \"$question\""
         }
     }
 

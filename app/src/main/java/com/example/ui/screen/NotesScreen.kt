@@ -11,6 +11,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.automirrored.filled.StickyNote2
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -35,18 +37,33 @@ fun NotesScreen(
 ) {
     val notes by viewModel.allNotes.collectAsState()
     val summaryState by viewModel.summaryState.collectAsState()
+    val fromNoteState by viewModel.fromNoteFlashcardState.collectAsState()
+    val fromNoteNoteId by viewModel.fromNoteFlashcardNoteId.collectAsState()
+    val qaState by viewModel.qaState.collectAsState()
 
-    var activeTab by remember { mutableIntStateOf(0) } // 0 = Gerar, 1 = Histórico
+    var activeTab by remember { mutableIntStateOf(0) }
     var titleInput by remember { mutableStateOf("") }
     var contentInput by remember { mutableStateOf("") }
-
-    // Selected study note details dialog
     var selectedNote by remember { mutableStateOf<StudyNote?>(null) }
 
-    // Reset state when screen is entered/leaved
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    // Show snackbar when flashcards from a note are successfully created
+    LaunchedEffect(fromNoteState) {
+        if (fromNoteState is UiState.Success) {
+            snackbarHostState.showSnackbar("✅ Deck criado! Acesse em Flashcards.")
+            viewModel.resetFromNoteFlashcardState()
+        } else if (fromNoteState is UiState.Error) {
+            snackbarHostState.showSnackbar("❌ ${(fromNoteState as UiState.Error).message}")
+            viewModel.resetFromNoteFlashcardState()
+        }
+    }
+
     DisposableEffect(Unit) {
         onDispose {
             viewModel.resetSummaryState()
+            viewModel.resetQaState()
+            viewModel.resetFromNoteFlashcardState()
         }
     }
 
@@ -61,6 +78,7 @@ fun NotesScreen(
                 }
             )
         },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         modifier = modifier.fillMaxSize()
     ) { innerPadding ->
         Column(
@@ -68,7 +86,6 @@ fun NotesScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            // Tab header
             TabRow(selectedTabIndex = activeTab) {
                 Tab(
                     selected = activeTab == 0,
@@ -86,7 +103,6 @@ fun NotesScreen(
 
             when (activeTab) {
                 0 -> {
-                    // Form to generate note
                     LazyColumn(
                         modifier = Modifier
                             .fillMaxSize()
@@ -119,8 +135,8 @@ fun NotesScreen(
                             OutlinedTextField(
                                 value = contentInput,
                                 onValueChange = { contentInput = it },
-                                label = { Text("Texto base para resumir (Opcional se souber o tema)") },
-                                placeholder = { Text("Cole artigos acadêmicos, anotações de aula, ou deixe em branco para a IA discorrer livremente sobre o tema...") },
+                                label = { Text("Texto base para resumir (Opcional)") },
+                                placeholder = { Text("Cole artigos, anotações de aula, ou deixe em branco...") },
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(200.dp)
@@ -159,14 +175,13 @@ fun NotesScreen(
                             }
                         }
 
-                        // Display output state
                         item {
                             SummaryOutputBlock(
                                 state = summaryState,
                                 onSaveSuccess = {
                                     titleInput = ""
                                     contentInput = ""
-                                    activeTab = 1 // Switch to saved list
+                                    activeTab = 1
                                     viewModel.resetSummaryState()
                                 }
                             )
@@ -174,7 +189,6 @@ fun NotesScreen(
                     }
                 }
                 1 -> {
-                    // History list
                     if (notes.isEmpty()) {
                         Box(
                             modifier = Modifier
@@ -184,7 +198,7 @@ fun NotesScreen(
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Icon(
-                                    imageVector = Icons.Default.StickyNote2,
+                                    imageVector = Icons.AutoMirrored.Filled.StickyNote2,
                                     contentDescription = null,
                                     modifier = Modifier.size(64.dp),
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
@@ -198,7 +212,7 @@ fun NotesScreen(
                                 )
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Text(
-                                    text = "Preencha o formulário anterior e use o poder do Gemini para estruturar seus primeiros textos de revisão.",
+                                    text = "Preencha o formulário anterior e use o Gemini para criar seus primeiros resumos.",
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
                                     textAlign = TextAlign.Center
@@ -216,7 +230,9 @@ fun NotesScreen(
                                 SavedNoteCard(
                                     note = note,
                                     onClick = { selectedNote = note },
-                                    onDelete = { viewModel.deleteNote(note) }
+                                    onDelete = { viewModel.deleteNote(note) },
+                                    onCreateFlashcards = { viewModel.generateFlashcardsFromNote(note) },
+                                    isCreatingFlashcards = fromNoteNoteId == note.id && fromNoteState is UiState.Loading
                                 )
                             }
                         }
@@ -225,56 +241,137 @@ fun NotesScreen(
             }
         }
 
-        // Full summary view dialog
+        // Note detail dialog with Q&A
         selectedNote?.let { note ->
+            var qaQuestion by remember(note.id) { mutableStateOf("") }
+
             AlertDialog(
-                onDismissRequest = { selectedNote = null },
+                onDismissRequest = {
+                    selectedNote = null
+                    viewModel.resetQaState()
+                },
                 title = { Text(note.title, fontWeight = FontWeight.Bold) },
                 text = {
-                    Box(modifier = Modifier.heightIn(max = 400.dp)) {
-                        LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    LazyColumn(
+                        modifier = Modifier.heightIn(max = 560.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        item {
+                            Text(
+                                text = "Resumo da Inteligência Artificial:",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        item {
+                            SelectionContainer {
+                                Text(
+                                    text = note.summary,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    lineHeight = 22.sp
+                                )
+                            }
+                        }
+                        if (note.content.isNotBlank()) {
+                            item { HorizontalDivider() }
                             item {
                                 Text(
-                                    text = "Resumo da Inteligência Artificial:",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    fontWeight = FontWeight.Bold
+                                    text = "Texto Base Original:",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                             item {
-                                SelectionContainer {
-                                    Text(
-                                        text = note.summary,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        lineHeight = 22.sp
-                                    )
+                                Text(
+                                    text = note.content,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f)
+                                )
+                            }
+                        }
+
+                        // Q&A section
+                        item { HorizontalDivider() }
+                        item {
+                            Text(
+                                text = "💬 Pergunte ao Resumo",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        item {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedTextField(
+                                    value = qaQuestion,
+                                    onValueChange = { qaQuestion = it },
+                                    placeholder = { Text("Ex: Quais são as exceções?", fontSize = 12.sp) },
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(8.dp),
+                                    singleLine = true,
+                                    textStyle = MaterialTheme.typography.bodySmall
+                                )
+                                IconButton(
+                                    onClick = {
+                                        viewModel.askAboutNote(
+                                            question = qaQuestion,
+                                            noteContent = note.summary + if (note.content.isNotBlank()) "\n\n${note.content}" else ""
+                                        )
+                                    },
+                                    enabled = qaQuestion.isNotBlank() && qaState !is UiState.Loading
+                                ) {
+                                    if (qaState is UiState.Loading) {
+                                        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                                    } else {
+                                        Icon(
+                                            Icons.AutoMirrored.Filled.Send,
+                                            contentDescription = "Perguntar",
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
                                 }
                             }
-                            if (note.content.isNotBlank()) {
+                        }
+                        when (val state = qaState) {
+                            is UiState.Success -> {
                                 item {
-                                    Divider()
+                                    Surface(
+                                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f),
+                                        shape = RoundedCornerShape(8.dp)
+                                    ) {
+                                        Text(
+                                            text = state.data,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            lineHeight = 18.sp,
+                                            modifier = Modifier.padding(10.dp)
+                                        )
+                                    }
                                 }
+                            }
+                            is UiState.Error -> {
                                 item {
                                     Text(
-                                        text = "Texto Base Original Fornecido:",
-                                        style = MaterialTheme.typography.titleSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                                item {
-                                    Text(
-                                        text = note.content,
+                                        text = state.message,
                                         style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f)
+                                        color = MaterialTheme.colorScheme.error
                                     )
                                 }
                             }
+                            else -> {}
                         }
                     }
                 },
                 confirmButton = {
-                    TextButton(onClick = { selectedNote = null }) {
+                    TextButton(onClick = {
+                        selectedNote = null
+                        viewModel.resetQaState()
+                    }) {
                         Text("Fechar")
                     }
                 }
@@ -295,7 +392,6 @@ fun SummaryOutputBlock(
     ) {
         when (state) {
             is UiState.Loading -> {
-                // Inline loading state
                 Card(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.05f)),
                     shape = RoundedCornerShape(12.dp),
@@ -310,7 +406,7 @@ fun SummaryOutputBlock(
                         LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                         Spacer(modifier = Modifier.height(12.dp))
                         Text(
-                            text = "Aguardando retorno do modelo Gemini-3.5-flash. Isso pode demorar alguns segundos conforme a complexidade do seu edital ou texto...",
+                            text = "Aguardando o modelo Gemini. Isso pode demorar alguns segundos...",
                             style = MaterialTheme.typography.bodySmall,
                             textAlign = TextAlign.Center,
                             color = MaterialTheme.colorScheme.primary
@@ -333,7 +429,7 @@ fun SummaryOutputBlock(
                             Icon(Icons.Default.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "Resumo Gerado e Salvo com Sucesso!",
+                                text = "Resumo Gerado e Salvo!",
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.primary
                             )
@@ -395,7 +491,9 @@ fun SummaryOutputBlock(
 fun SavedNoteCard(
     note: StudyNote,
     onClick: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onCreateFlashcards: () -> Unit,
+    isCreatingFlashcards: Boolean = false
 ) {
     var showConfirmDelete by remember { mutableStateOf(false) }
 
@@ -410,36 +508,64 @@ fun SavedNoteCard(
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = note.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = note.summary,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
+        Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = note.title,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = note.summary.ifBlank { "Sem resumo." },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Row {
+                    // Create flashcards from this note
+                    IconButton(
+                        onClick = onCreateFlashcards,
+                        enabled = !isCreatingFlashcards
+                    ) {
+                        if (isCreatingFlashcards) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.AutoAwesome,
+                                contentDescription = "Criar Flashcards",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                    IconButton(onClick = { showConfirmDelete = true }) {
+                        Icon(
+                            imageVector = Icons.Default.DeleteOutline,
+                            contentDescription = "Excluir resumo",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
             }
-            IconButton(onClick = { showConfirmDelete = true }) {
-                Icon(
-                    imageVector = Icons.Default.DeleteOutline,
-                    contentDescription = "Excluir resumo",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
+            // Hint about Q&A
+            Text(
+                text = "Toque para ler completo e fazer perguntas 💬",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f),
+                modifier = Modifier.padding(top = 4.dp)
+            )
         }
     }
 

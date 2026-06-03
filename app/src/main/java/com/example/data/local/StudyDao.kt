@@ -69,4 +69,21 @@ interface StudyDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertSession(session: StudySession)
+
+    // --- All Flashcards (used for review-all mode) ---
+    @Query("SELECT * FROM flashcards")
+    fun getAllFlashcards(): Flow<List<Flashcard>>
+
+    // --- Edital Topics ---
+    @Query("SELECT * FROM edital_topics WHERE contestId = :contestId ORDER BY id ASC")
+    fun getEditalTopicsForContest(contestId: Int): Flow<List<EditalTopic>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertEditalTopic(topic: EditalTopic)
+
+    @Query("UPDATE edital_topics SET status = :status WHERE id = :topicId")
+    suspend fun updateEditalTopicStatus(topicId: Int, status: Int)
+
+    @Query("DELETE FROM edital_topics WHERE contestId = :contestId")
+    suspend fun deleteEditalTopicsForContest(contestId: Int)
 }

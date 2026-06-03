@@ -36,11 +36,15 @@ fun ReviewScreen(
     modifier: Modifier = Modifier
 ) {
     val decks by viewModel.allDecks.collectAsState()
-    val deck = remember(deckId, decks) { decks.find { it.id == deckId } }
+    val deck = remember(deckId, decks) {
+        if (deckId == -1) null else decks.find { it.id == deckId }
+    }
+    val isAllDecksMode = deckId == -1
 
-    // Read flashcards reactively
-    val cardsFlow = remember(deckId) { 
-        viewModel.getFlashcardsForDeck(deckId)
+    // Read flashcards reactively — deckId == -1 loads all cards from all decks
+    val cardsFlow = remember(deckId) {
+        if (isAllDecksMode) viewModel.allFlashcards
+        else viewModel.getFlashcardsForDeck(deckId)
     }
     val cards by cardsFlow.collectAsState(initial = emptyList())
 
@@ -52,7 +56,7 @@ fun ReviewScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(deck?.title ?: "Jogo de Revisão") },
+                title = { Text(if (isAllDecksMode) "Revisão Geral 🎯" else deck?.title ?: "Jogo de Revisão") },
                 navigationIcon = {
                     IconButton(onClick = onBack, modifier = Modifier.testTag("review_close_button")) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Voltar")
@@ -78,12 +82,15 @@ fun ReviewScreen(
             } else if (isFinished || currentIndex >= cards.size) {
                 // Summary Screen
                 ReviewSummaryBlock(
-                    deckTitle = deck?.title ?: "Revisão Concluída",
+                    deckTitle = if (isAllDecksMode) "Revisão Geral — Todos os Decks" else deck?.title ?: "Revisão Concluída",
                     correctCount = correctCount,
                     totalCount = cards.size,
                     onFinish = {
-                        // Record session stats on local database
-                        viewModel.saveSessionStats(deckId, cards.size, correctCount)
+                        viewModel.saveSessionStats(
+                            deckId = if (isAllDecksMode) 0 else deckId,
+                            cardsReviewed = cards.size,
+                            correctAnswers = correctCount
+                        )
                         onBack()
                     }
                 )

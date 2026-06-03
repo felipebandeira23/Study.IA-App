@@ -1,23 +1,26 @@
 package com.example.ui.screen
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Flag
-import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.model.EditalTopic
 import com.example.data.model.TrackedContest
 import com.example.ui.viewmodel.StudyViewModel
 
@@ -33,6 +36,7 @@ fun ContestScreen(
     var nameInput by remember { mutableStateOf("") }
     var organizerInput by remember { mutableStateOf("") }
     var examDateInput by remember { mutableStateOf("") }
+    var editalInput by remember { mutableStateOf("") }
     var notesInput by remember { mutableStateOf("") }
 
     Scaffold(
@@ -55,7 +59,6 @@ fun ContestScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Addition Form Header
             item {
                 Text(
                     text = "Cadastrar ou Acompanhar Edital:",
@@ -65,13 +68,12 @@ fun ContestScreen(
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "Os dados descritos aqui servirão de sugestão de contexto histórico para a inteligência artificial desenhar seu plano de estudos.",
+                    text = "Os dados descritos aqui servem de contexto para a IA gerar seu plano de estudos.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
-            // Text fields
             item {
                 OutlinedTextField(
                     value = nameInput,
@@ -112,11 +114,22 @@ fun ContestScreen(
 
             item {
                 OutlinedTextField(
+                    value = editalInput,
+                    onValueChange = { editalInput = it },
+                    label = { Text("Conteúdo do Edital (opcional)") },
+                    placeholder = { Text("Cole aqui o conteúdo programático ou tópicos do edital...") },
+                    modifier = Modifier.fillMaxWidth().height(120.dp),
+                    shape = RoundedCornerShape(8.dp)
+                )
+            }
+
+            item {
+                OutlinedTextField(
                     value = notesInput,
                     onValueChange = { notesInput = it },
-                    label = { Text("Anotações do Edital ou Tópicos importantes") },
+                    label = { Text("Anotações adicionais") },
                     placeholder = { Text("ex: Focar em Direito Tributário e Contabilidade pública...") },
-                    modifier = Modifier.fillMaxWidth().height(100.dp).testTag("contest_notes_input"),
+                    modifier = Modifier.fillMaxWidth().height(80.dp).testTag("contest_notes_input"),
                     shape = RoundedCornerShape(8.dp)
                 )
             }
@@ -129,13 +142,13 @@ fun ContestScreen(
                                 name = nameInput,
                                 organizer = organizerInput,
                                 examDate = examDateInput,
-                                editalText = nameInput,
+                                editalText = editalInput,
                                 notes = notesInput
                             )
-                            // Reset input
                             nameInput = ""
                             organizerInput = ""
                             examDateInput = ""
+                            editalInput = ""
                             notesInput = ""
                         }
                     },
@@ -152,11 +165,8 @@ fun ContestScreen(
                 }
             }
 
-            item {
-                Divider(modifier = Modifier.padding(vertical = 8.dp))
-            }
+            item { HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp)) }
 
-            // List of registered concursos
             item {
                 Text(
                     text = "Seus Concursos Registrados (${contests.size})",
@@ -191,6 +201,7 @@ fun ContestScreen(
                 items(contests) { contest ->
                     TrackedContestListItem(
                         contest = contest,
+                        viewModel = viewModel,
                         onDelete = { viewModel.deleteTrackedContest(contest.id) }
                     )
                 }
@@ -202,9 +213,14 @@ fun ContestScreen(
 @Composable
 fun TrackedContestListItem(
     contest: TrackedContest,
+    viewModel: StudyViewModel,
     onDelete: () -> Unit
 ) {
     var showConfirmDelete by remember { mutableStateOf(false) }
+    var showTopics by remember { mutableStateOf(false) }
+    var newTopicInput by remember { mutableStateOf("") }
+
+    val topics by viewModel.getEditalTopicsForContest(contest.id).collectAsState(initial = emptyList())
 
     Card(
         modifier = Modifier
@@ -218,6 +234,7 @@ fun TrackedContestListItem(
                 .fillMaxWidth()
                 .padding(16.dp)
         ) {
+            // Header row
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -253,14 +270,20 @@ fun TrackedContestListItem(
                         }
                     }
                 }
-                IconButton(onClick = { showConfirmDelete = true }) {
-                    Icon(
-                        imageVector = Icons.Default.Delete,
-                        contentDescription = "Excluir concurso",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                Row {
+                    IconButton(onClick = { showTopics = !showTopics }) {
+                        Icon(
+                            imageVector = if (showTopics) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                            contentDescription = "Ver tópicos",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    IconButton(onClick = { showConfirmDelete = true }) {
+                        Icon(Icons.Default.Delete, contentDescription = "Excluir concurso", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
             }
+
             if (contest.notes.isNotBlank()) {
                 Spacer(modifier = Modifier.height(10.dp))
                 Text(
@@ -269,6 +292,88 @@ fun TrackedContestListItem(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+
+            // Edital topics checklist (collapsible)
+            AnimatedVisibility(
+                visible = showTopics,
+                enter = expandVertically(),
+                exit = shrinkVertically()
+            ) {
+                Column(modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
+                    HorizontalDivider()
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "📋 Tópicos do Edital (${topics.size})",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        val dominados = topics.count { it.status == 2 }
+                        if (topics.isNotEmpty()) {
+                            Text(
+                                text = "$dominados/${topics.size} dominados",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color(0xFF2E7D32)
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    if (topics.isEmpty()) {
+                        Text(
+                            text = "Nenhum tópico adicionado. Adicione abaixo.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
+                        )
+                    } else {
+                        topics.forEach { topic ->
+                            EditalTopicRow(
+                                topic = topic,
+                                onStatusChange = { newStatus ->
+                                    viewModel.updateEditalTopicStatus(topic.id, newStatus)
+                                }
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Add topic row
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = newTopicInput,
+                            onValueChange = { newTopicInput = it },
+                            placeholder = { Text("Novo tópico (ex: Direito Constitucional)", fontSize = 12.sp) },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(8.dp),
+                            singleLine = true,
+                            textStyle = MaterialTheme.typography.bodySmall
+                        )
+                        IconButton(
+                            onClick = {
+                                if (newTopicInput.isNotBlank()) {
+                                    viewModel.addEditalTopic(contest.id, newTopicInput.trim())
+                                    newTopicInput = ""
+                                }
+                            },
+                            enabled = newTopicInput.isNotBlank()
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = "Adicionar tópico", tint = MaterialTheme.colorScheme.primary)
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -276,7 +381,7 @@ fun TrackedContestListItem(
         AlertDialog(
             onDismissRequest = { showConfirmDelete = false },
             title = { Text("Excluir Concurso?") },
-            text = { Text("Deseja parar de acompanhar o concurso '${contest.name}'? Isso também o removerá das opções rápidas de planejamento de estudo.") },
+            text = { Text("Deseja parar de acompanhar o concurso '${contest.name}'? Os tópicos do edital também serão removidos.") },
             confirmButton = {
                 Button(
                     onClick = {
@@ -289,10 +394,71 @@ fun TrackedContestListItem(
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showConfirmDelete = false }) {
-                    Text("Cancelar")
-                }
+                TextButton(onClick = { showConfirmDelete = false }) { Text("Cancelar") }
             }
         )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun EditalTopicRow(
+    topic: EditalTopic,
+    onStatusChange: (Int) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        // Status indicator dot
+        val dotColor = when (topic.status) {
+            0 -> Color(0xFFBDBDBD) // Pendente — grey
+            1 -> Color(0xFFFFA726) // Em revisão — orange
+            2 -> Color(0xFF4CAF50) // Dominado — green
+            else -> Color(0xFFBDBDBD)
+        }
+        Surface(
+            modifier = Modifier.size(10.dp),
+            shape = RoundedCornerShape(5.dp),
+            color = dotColor
+        ) {}
+
+        Text(
+            text = topic.title,
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.weight(1f),
+            color = if (topic.status == 2) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+            else MaterialTheme.colorScheme.onSurface
+        )
+
+        // Compact status selector
+        val statusLabels = listOf("Pendente", "Revisando", "Dominado")
+        val statusColors = listOf(
+            MaterialTheme.colorScheme.surfaceVariant,
+            Color(0xFFFFF3E0),
+            Color(0xFFE8F5E9)
+        )
+        val statusTextColors = listOf(
+            MaterialTheme.colorScheme.onSurfaceVariant,
+            Color(0xFFE65100),
+            Color(0xFF1B5E20)
+        )
+
+        Surface(
+            color = statusColors[topic.status.coerceIn(0, 2)],
+            shape = RoundedCornerShape(6.dp),
+            onClick = { onStatusChange((topic.status + 1) % 3) }
+        ) {
+            Text(
+                text = statusLabels[topic.status.coerceIn(0, 2)],
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                color = statusTextColors[topic.status.coerceIn(0, 2)],
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+            )
+        }
     }
 }

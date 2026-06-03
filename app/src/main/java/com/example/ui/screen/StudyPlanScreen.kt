@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.EventNote
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -300,7 +301,7 @@ fun StudyPlanScreen(
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text("Construindo plano personalizado...")
                                 } else {
-                                    Icon(Icons.Default.EventNote, contentDescription = null)
+                                    Icon(Icons.AutoMirrored.Filled.EventNote, contentDescription = null)
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text("Gerar Estratégia de Estudos Diária")
                                 }
@@ -555,7 +556,7 @@ fun ActivePlanCard(
                         .fillMaxWidth()
                         .padding(vertical = 12.dp)
                 ) {
-                    Divider(modifier = Modifier.padding(bottom = 12.dp))
+                    HorizontalDivider(modifier = Modifier.padding(bottom = 12.dp))
                     Text(
                         text = "Trilha Estratégica Diária:",
                         style = MaterialTheme.typography.titleSmall,

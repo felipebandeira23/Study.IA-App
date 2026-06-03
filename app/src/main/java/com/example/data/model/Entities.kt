@@ -59,3 +59,11 @@ data class StudySession(
     val correctAnswers: Int,
     val date: Long = System.currentTimeMillis()
 )
+
+@Entity(tableName = "edital_topics")
+data class EditalTopic(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val contestId: Int,
+    val title: String,
+    val status: Int = 0  // 0 = Pendente, 1 = Em revisão, 2 = Dominado
+)
