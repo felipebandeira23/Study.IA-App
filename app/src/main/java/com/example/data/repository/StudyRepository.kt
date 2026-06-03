@@ -3,6 +3,7 @@ package com.example.data.repository
 import com.example.data.local.StudyDao
 import com.example.data.model.*
 import com.example.data.remote.GeminiClient
+import com.example.domain.SrsAlgorithm
 import kotlinx.coroutines.flow.Flow
 import org.json.JSONArray
 import org.json.JSONObject
@@ -19,6 +20,20 @@ class StudyRepository(private val studyDao: StudyDao) {
     fun getFlashcardsForDeck(deckId: Int): Flow<List<Flashcard>> = studyDao.getFlashcardsForDeck(deckId)
     suspend fun getFlashcardsForDeckSync(deckId: Int): List<Flashcard> = studyDao.getFlashcardsForDeckSync(deckId)
     suspend fun getDeckById(deckId: Int): Deck? = studyDao.getDeckById(deckId)
+    suspend fun getDueFlashcardsForDeck(deckId: Int): List<Flashcard> = studyDao.getDueFlashcards(deckId)
+    fun getDueCountForDeck(deckId: Int): Flow<Int> = studyDao.getDueCount(deckId)
+
+    suspend fun updateCardAfterReview(flashcard: Flashcard, quality: Int) {
+        val result = SrsAlgorithm.calculate(
+            quality, flashcard.repetitions, flashcard.easeFactor, flashcard.intervalDays
+        )
+        studyDao.updateFlashcardSrs(
+            flashcard.id, result.repetitions, result.easeFactor, result.intervalDays, result.nextReviewAt
+        )
+        studyDao.insertCardReview(
+            CardReview(flashcardId = flashcard.id, deckId = flashcard.deckId, quality = quality)
+        )
+    }
 
     // Notes Transactions
     suspend fun saveNote(title: String, content: String, summary: String, topic: String) {
@@ -156,12 +171,17 @@ class StudyRepository(private val studyDao: StudyDao) {
         return if (GeminiClient.isApiKeyAvailable()) {
             val systemInstruction = "Você é um mentor acadêmico altamente experiente em planos de estudo personalizados."
             val contestSection = if (contestContext != null) {
-                """
-                O plano de estudos deve levar em consideração o seguinte edital ou concurso:
-                - Nome do concurso: ${contestContext.name}
-                - Banca Organizadora: ${contestContext.organizer}
-                - Outras anotações do concurso: ${contestContext.notes}
-                """.trimIndent()
+                buildString {
+                    appendLine("O plano de estudos deve levar em consideração o seguinte edital ou concurso:")
+                    appendLine("- Nome do concurso: ${contestContext.name}")
+                    if (contestContext.organizer.isNotBlank()) appendLine("- Banca Organizadora: ${contestContext.organizer}")
+                    if (contestContext.examDate.isNotBlank()) appendLine("- Data prevista da prova: ${contestContext.examDate}")
+                    if (contestContext.editalText.isNotBlank()) {
+                        appendLine("- Conteúdo programático do edital:")
+                        appendLine(contestContext.editalText)
+                    }
+                    if (contestContext.notes.isNotBlank()) appendLine("- Anotações adicionais: ${contestContext.notes}")
+                }.trimEnd()
             } else ""
 
             val prompt = """

@@ -43,6 +43,22 @@ interface StudyDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertFlashcards(flashcards: List<Flashcard>)
 
+    @Query("UPDATE flashcards SET repetitions=:reps, easeFactor=:ef, intervalDays=:interval, nextReviewAt=:nextAt WHERE id=:id")
+    suspend fun updateFlashcardSrs(id: Int, reps: Int, ef: Float, interval: Int, nextAt: Long)
+
+    @Query("SELECT * FROM flashcards WHERE deckId=:deckId AND nextReviewAt <= :now ORDER BY nextReviewAt ASC")
+    suspend fun getDueFlashcards(deckId: Int, now: Long = System.currentTimeMillis()): List<Flashcard>
+
+    @Query("SELECT COUNT(*) FROM flashcards WHERE deckId=:deckId AND nextReviewAt <= :now")
+    fun getDueCount(deckId: Int, now: Long = System.currentTimeMillis()): Flow<Int>
+
+    // --- Card Reviews ---
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertCardReview(review: CardReview)
+
+    @Query("SELECT * FROM card_reviews WHERE deckId=:deckId ORDER BY reviewedAt DESC")
+    fun getReviewsForDeck(deckId: Int): Flow<List<CardReview>>
+
     // --- Study Plans ---
     @Query("SELECT * FROM study_plans ORDER BY createdAt DESC")
     fun getAllPlans(): Flow<List<StudyPlan>>

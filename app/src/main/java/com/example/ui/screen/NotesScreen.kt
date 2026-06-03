@@ -16,7 +16,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import android.content.Intent
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -25,6 +27,16 @@ import androidx.compose.ui.unit.sp
 import com.example.data.model.StudyNote
 import com.example.ui.viewmodel.StudyViewModel
 import com.example.ui.viewmodel.UiState
+
+private fun shareNote(context: android.content.Context, note: com.example.data.model.StudyNote) {
+    val shareText = "📝 ${note.title}\n\n${note.summary}"
+    val intent = Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_SUBJECT, note.title)
+        putExtra(Intent.EXTRA_TEXT, shareText)
+    }
+    context.startActivity(Intent.createChooser(intent, "Compartilhar resumo"))
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -35,6 +47,7 @@ fun NotesScreen(
 ) {
     val notes by viewModel.allNotes.collectAsState()
     val summaryState by viewModel.summaryState.collectAsState()
+    val context = LocalContext.current
 
     var activeTab by remember { mutableIntStateOf(0) } // 0 = Gerar, 1 = Histórico
     var titleInput by remember { mutableStateOf("") }
@@ -216,7 +229,8 @@ fun NotesScreen(
                                 SavedNoteCard(
                                     note = note,
                                     onClick = { selectedNote = note },
-                                    onDelete = { viewModel.deleteNote(note) }
+                                    onDelete = { viewModel.deleteNote(note) },
+                                    onShare = { shareNote(context, note) }
                                 )
                             }
                         }
@@ -395,7 +409,8 @@ fun SummaryOutputBlock(
 fun SavedNoteCard(
     note: StudyNote,
     onClick: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onShare: () -> Unit = {}
 ) {
     var showConfirmDelete by remember { mutableStateOf(false) }
 
@@ -431,6 +446,13 @@ fun SavedNoteCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
+                )
+            }
+            IconButton(onClick = onShare, modifier = Modifier.testTag("share_note_${note.id}")) {
+                Icon(
+                    imageVector = Icons.Default.Share,
+                    contentDescription = "Compartilhar resumo",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             IconButton(onClick = { showConfirmDelete = true }) {

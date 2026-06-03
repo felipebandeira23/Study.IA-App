@@ -11,6 +11,8 @@ import com.example.data.remote.GeminiClient
 import com.example.data.repository.StudyRepository
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import java.util.Calendar
+import java.util.concurrent.TimeUnit
 
 sealed interface UiState<out T> {
     object Idle : UiState<Nothing>
@@ -36,6 +38,47 @@ class StudyViewModel(private val repository: StudyRepository) : ViewModel() {
 
     val allSessions: StateFlow<List<StudySession>> = repository.allSessions
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val dailyStreak: StateFlow<Int> = repository.allSessions
+        .map { sessions -> calculateStreak(sessions) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
+    data class DeckStats(val deckId: Int, val deckName: String, val totalReviews: Int, val lastReviewAt: Long)
+
+    val deckStats: StateFlow<List<DeckStats>> = combine(
+        repository.allSessions, repository.allDecks
+    ) { sessions, decks ->
+        val deckMap = decks.associateBy { it.id }
+        sessions.groupBy { it.deckId }
+            .map { (deckId, s) ->
+                DeckStats(
+                    deckId = deckId,
+                    deckName = deckMap[deckId]?.name ?: "Deck #$deckId",
+                    totalReviews = s.sumOf { it.cardsReviewed },
+                    lastReviewAt = s.maxOf { it.date }
+                )
+            }
+            .sortedByDescending { it.totalReviews }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val weeklyActivity: StateFlow<Map<Long, Int>> = repository.allSessions
+        .map { sessions ->
+            val cutoff = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(27)
+            sessions.filter { it.date >= cutoff }
+                .groupBy { truncateToDay(it.date) }
+                .mapValues { (_, s) -> s.size }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
+
+    val sessionAccuracyHistory: StateFlow<List<Pair<Long, Int>>> = repository.allSessions
+        .map { sessions ->
+            sessions.sortedByDescending { it.date }
+                .take(14)
+                .reversed()
+                .map { s ->
+                    val acc = if (s.cardsReviewed > 0) (s.correctAnswers * 100 / s.cardsReviewed) else 0
+                    s.date to acc
+                }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // UI generation states
     private val _summaryState = MutableStateFlow<UiState<String>>(UiState.Idle)
@@ -116,6 +159,18 @@ class StudyViewModel(private val repository: StudyRepository) : ViewModel() {
         return repository.getFlashcardsForDeck(deckId)
     }
 
+    suspend fun getDueFlashcardsForDeck(deckId: Int): List<Flashcard> {
+        return repository.getDueFlashcardsForDeck(deckId)
+    }
+
+    fun getDueCountForDeck(deckId: Int): Flow<Int> = repository.getDueCountForDeck(deckId)
+
+    fun reviewCard(flashcard: Flashcard, quality: Int) {
+        viewModelScope.launch {
+            repository.updateCardAfterReview(flashcard, quality)
+        }
+    }
+
     // --- Study Plan Actions ---
     fun createStudyPlan(topic: String, durationDays: Int, level: String, contestId: Int?) {
         viewModelScope.launch {
@@ -179,6 +234,48 @@ class StudyViewModel(private val repository: StudyRepository) : ViewModel() {
         viewModelScope.launch {
             repository.recordSession(deckId, cardsReviewed, correctAnswers)
         }
+    }
+
+    private fun truncateToDay(epochMs: Long): Long {
+        val cal = Calendar.getInstance().apply { timeInMillis = epochMs }
+        cal.set(Calendar.HOUR_OF_DAY, 0)
+        cal.set(Calendar.MINUTE, 0)
+        cal.set(Calendar.SECOND, 0)
+        cal.set(Calendar.MILLISECOND, 0)
+        return cal.timeInMillis
+    }
+
+    private fun calculateStreak(sessions: List<StudySession>): Int {
+        if (sessions.isEmpty()) return 0
+
+        val oneDayMs = TimeUnit.DAYS.toMillis(1)
+
+        val todayStart = truncateToDay(System.currentTimeMillis())
+        val yesterdayStart = todayStart - oneDayMs
+
+        val distinctDays = sessions
+            .map { truncateToDay(it.date) }
+            .toSortedSet()
+            .reversed()
+
+        if (distinctDays.isEmpty()) return 0
+
+        // Streak must start from today or yesterday (don't break if user hasn't studied today yet)
+        val mostRecent = distinctDays.first()
+        if (mostRecent < yesterdayStart) return 0
+
+        var streak = 0
+        var expected = if (mostRecent == todayStart) todayStart else yesterdayStart
+
+        for (day in distinctDays) {
+            if (day == expected) {
+                streak++
+                expected -= oneDayMs
+            } else if (day < expected) {
+                break
+            }
+        }
+        return streak
     }
 
     // Companion factory for manual dependency injection helper

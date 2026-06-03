@@ -27,7 +27,21 @@ data class Flashcard(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val deckId: Int,
     val front: String,
-    val back: String
+    val back: String,
+    // SM-2 spaced repetition fields
+    val repetitions: Int = 0,
+    val easeFactor: Float = 2.5f,
+    val intervalDays: Int = 1,
+    val nextReviewAt: Long = System.currentTimeMillis()
+)
+
+@Entity(tableName = "card_reviews")
+data class CardReview(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val flashcardId: Int,
+    val deckId: Int,
+    val quality: Int,
+    val reviewedAt: Long = System.currentTimeMillis()
 )
 
 @Entity(tableName = "study_plans")

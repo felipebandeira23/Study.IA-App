@@ -13,9 +13,10 @@ import com.example.data.model.*
         Flashcard::class,
         StudyPlan::class,
         TrackedContest::class,
-        StudySession::class
+        StudySession::class,
+        CardReview::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

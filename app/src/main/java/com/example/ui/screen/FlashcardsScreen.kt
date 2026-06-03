@@ -241,8 +241,11 @@ fun FlashcardsScreen(
                             verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             items(decks) { deck ->
+                                val dueCount by viewModel.getDueCountForDeck(deck.id)
+                                    .collectAsState(initial = 0)
                                 DeckListItem(
                                     deck = deck,
+                                    dueCount = dueCount,
                                     onPlay = { onNavigateToReview(deck.id) },
                                     onDelete = { viewModel.deleteDeck(deck.id) }
                                 )
@@ -355,6 +358,7 @@ fun DeckOutputBlock(
 @Composable
 fun DeckListItem(
     deck: Deck,
+    dueCount: Int = 0,
     onPlay: () -> Unit,
     onDelete: () -> Unit
 ) {
@@ -378,12 +382,31 @@ fun DeckListItem(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = deck.title,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = deck.title,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        if (dueCount > 0) {
+                            Surface(
+                                color = MaterialTheme.colorScheme.error,
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text(
+                                    text = "$dueCount pendente${if (dueCount > 1) "s" else ""}",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = MaterialTheme.colorScheme.onError,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                    }
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         text = deck.topic,
@@ -418,15 +441,21 @@ fun DeckListItem(
                         tint = MaterialTheme.colorScheme.primary
                     )
                     Text(
-                        text = "Visualização Pronta",
+                        text = if (dueCount > 0) "Cards pendentes para revisar" else "Revisão em dia ✓",
                         fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = if (dueCount > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
                 Button(
                     onClick = onPlay,
                     shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier.testTag("deck_play_button_${deck.id}")
+                    modifier = Modifier.testTag("deck_play_button_${deck.id}"),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (dueCount > 0) MaterialTheme.colorScheme.primary
+                                         else MaterialTheme.colorScheme.surfaceVariant,
+                        contentColor = if (dueCount > 0) MaterialTheme.colorScheme.onPrimary
+                                       else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 ) {
                     Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(6.dp))
