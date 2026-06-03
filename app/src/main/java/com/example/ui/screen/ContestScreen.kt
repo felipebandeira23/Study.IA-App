@@ -33,6 +33,7 @@ fun ContestScreen(
     var nameInput by remember { mutableStateOf("") }
     var organizerInput by remember { mutableStateOf("") }
     var examDateInput by remember { mutableStateOf("") }
+    var editalTextInput by remember { mutableStateOf("") }
     var notesInput by remember { mutableStateOf("") }
 
     Scaffold(
@@ -112,10 +113,21 @@ fun ContestScreen(
 
             item {
                 OutlinedTextField(
+                    value = editalTextInput,
+                    onValueChange = { editalTextInput = it },
+                    label = { Text("Conteúdo do Edital (Cole os tópicos ou disciplinas do edital)") },
+                    placeholder = { Text("ex: Direito Constitucional, Direito Administrativo, Língua Portuguesa...") },
+                    modifier = Modifier.fillMaxWidth().height(140.dp).testTag("contest_edital_input"),
+                    shape = RoundedCornerShape(8.dp)
+                )
+            }
+
+            item {
+                OutlinedTextField(
                     value = notesInput,
                     onValueChange = { notesInput = it },
-                    label = { Text("Anotações do Edital ou Tópicos importantes") },
-                    placeholder = { Text("ex: Focar em Direito Tributário e Contabilidade pública...") },
+                    label = { Text("Anotações Pessoais sobre o Concurso") },
+                    placeholder = { Text("ex: Focar em Direito Tributário, prova em SP...") },
                     modifier = Modifier.fillMaxWidth().height(100.dp).testTag("contest_notes_input"),
                     shape = RoundedCornerShape(8.dp)
                 )
@@ -129,13 +141,14 @@ fun ContestScreen(
                                 name = nameInput,
                                 organizer = organizerInput,
                                 examDate = examDateInput,
-                                editalText = nameInput,
+                                editalText = editalTextInput,
                                 notes = notesInput
                             )
                             // Reset input
                             nameInput = ""
                             organizerInput = ""
                             examDateInput = ""
+                            editalTextInput = ""
                             notesInput = ""
                         }
                     },

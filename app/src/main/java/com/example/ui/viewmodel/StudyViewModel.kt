@@ -11,6 +11,8 @@ import com.example.data.remote.GeminiClient
 import com.example.data.repository.StudyRepository
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import java.util.Calendar
+import java.util.concurrent.TimeUnit
 
 sealed interface UiState<out T> {
     object Idle : UiState<Nothing>
@@ -36,6 +38,10 @@ class StudyViewModel(private val repository: StudyRepository) : ViewModel() {
 
     val allSessions: StateFlow<List<StudySession>> = repository.allSessions
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val dailyStreak: StateFlow<Int> = repository.allSessions
+        .map { sessions -> calculateStreak(sessions) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
     // UI generation states
     private val _summaryState = MutableStateFlow<UiState<String>>(UiState.Idle)
@@ -179,6 +185,48 @@ class StudyViewModel(private val repository: StudyRepository) : ViewModel() {
         viewModelScope.launch {
             repository.recordSession(deckId, cardsReviewed, correctAnswers)
         }
+    }
+
+    private fun calculateStreak(sessions: List<StudySession>): Int {
+        if (sessions.isEmpty()) return 0
+
+        val oneDayMs = TimeUnit.DAYS.toMillis(1)
+
+        fun truncateToDay(epochMs: Long): Long {
+            val cal = Calendar.getInstance().apply { timeInMillis = epochMs }
+            cal.set(Calendar.HOUR_OF_DAY, 0)
+            cal.set(Calendar.MINUTE, 0)
+            cal.set(Calendar.SECOND, 0)
+            cal.set(Calendar.MILLISECOND, 0)
+            return cal.timeInMillis
+        }
+
+        val todayStart = truncateToDay(System.currentTimeMillis())
+        val yesterdayStart = todayStart - oneDayMs
+
+        val distinctDays = sessions
+            .map { truncateToDay(it.date) }
+            .toSortedSet()
+            .reversed()
+
+        if (distinctDays.isEmpty()) return 0
+
+        // Streak must start from today or yesterday (don't break if user hasn't studied today yet)
+        val mostRecent = distinctDays.first()
+        if (mostRecent < yesterdayStart) return 0
+
+        var streak = 0
+        var expected = if (mostRecent == todayStart) todayStart else yesterdayStart
+
+        for (day in distinctDays) {
+            if (day == expected) {
+                streak++
+                expected -= oneDayMs
+            } else if (day < expected) {
+                break
+            }
+        }
+        return streak
     }
 
     // Companion factory for manual dependency injection helper

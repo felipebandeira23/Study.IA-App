@@ -7,19 +7,22 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.ViewModelProvider
-import androidx.navigation.NamedNavArgument
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.data.local.AppDatabase
+import com.example.data.preferences.UserPreferencesRepository
+import com.example.data.remote.GeminiClient
 import com.example.data.repository.StudyRepository
 import com.example.ui.screen.*
 import com.example.ui.theme.MyApplicationTheme
+import com.example.ui.viewmodel.SettingsViewModel
 import com.example.ui.viewmodel.StudyViewModel
 
 class MainActivity : ComponentActivity() {
@@ -31,14 +34,33 @@ class MainActivity : ComponentActivity() {
         val database = AppDatabase.getDatabase(applicationContext)
         val repository = StudyRepository(database.studyDao())
 
+        // User preferences (DataStore)
+        val prefsRepository = UserPreferencesRepository(applicationContext)
+
         // Feed VM Factory manual dependency injection
         val viewModel = ViewModelProvider(
             this,
             StudyViewModel.provideFactory(repository)
         )[StudyViewModel::class.java]
 
+        val settingsViewModel = ViewModelProvider(
+            this,
+            SettingsViewModel.provideFactory(application, prefsRepository)
+        )[SettingsViewModel::class.java]
+
         setContent {
-            MyApplicationTheme {
+            val isDarkMode by settingsViewModel.isDarkMode.collectAsStateWithLifecycle()
+            val userName by settingsViewModel.userName.collectAsStateWithLifecycle()
+            val savedApiKey by settingsViewModel.apiKey.collectAsStateWithLifecycle()
+
+            // Sync runtime API key from DataStore into GeminiClient whenever it changes
+            LaunchedEffect(savedApiKey) {
+                if (savedApiKey.isNotBlank()) {
+                    GeminiClient.runtimeApiKey = savedApiKey
+                }
+            }
+
+            MyApplicationTheme(darkTheme = isDarkMode) {
                 val navController = rememberNavController()
 
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
@@ -54,7 +76,9 @@ class MainActivity : ComponentActivity() {
                                 onNavigateToNotes = { navController.navigate("notes") },
                                 onNavigateToDecks = { navController.navigate("flashcards") },
                                 onNavigateToPlans = { navController.navigate("plans") },
-                                onNavigateToContests = { navController.navigate("contests") }
+                                onNavigateToContests = { navController.navigate("contests") },
+                                onNavigateToSettings = { navController.navigate("settings") },
+                                displayName = userName
                             )
                         }
 
@@ -102,6 +126,14 @@ class MainActivity : ComponentActivity() {
                         composable("contests") {
                             ContestScreen(
                                 viewModel = viewModel,
+                                onBack = { navController.popBackStack() }
+                            )
+                        }
+
+                        // 7. Settings Screen
+                        composable("settings") {
+                            SettingsScreen(
+                                viewModel = settingsViewModel,
                                 onBack = { navController.popBackStack() }
                             )
                         }

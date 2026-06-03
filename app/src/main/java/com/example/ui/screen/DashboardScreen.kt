@@ -50,6 +50,8 @@ fun DashboardScreen(
     onNavigateToDecks: () -> Unit,
     onNavigateToPlans: () -> Unit,
     onNavigateToContests: () -> Unit,
+    onNavigateToSettings: () -> Unit = {},
+    displayName: String = "",
     modifier: Modifier = Modifier
 ) {
     val notes by viewModel.allNotes.collectAsState()
@@ -57,6 +59,7 @@ fun DashboardScreen(
     val plans by viewModel.allPlans.collectAsState()
     val contests by viewModel.allContests.collectAsState()
     val sessions by viewModel.allSessions.collectAsState()
+    val dailyStreak by viewModel.dailyStreak.collectAsState()
 
     val totalReviewedCards = sessions.sumOf { it.cardsReviewed }
     val totalCorrectReviews = sessions.sumOf { it.correctAnswers }
@@ -79,12 +82,15 @@ fun DashboardScreen(
         ) {
             // Header Composable matching the Bento HTML design
             item {
-                BentoHeader(email = "felipe.bandeira1@gmail.com")
+                BentoHeader(displayName = displayName, onSettingsClick = onNavigateToSettings)
             }
 
             // API key notice alert
             item {
-                ApiKeyStatusBanner(isAvailable = viewModel.isApiKeyAvailable)
+                ApiKeyStatusBanner(
+                    isAvailable = viewModel.isApiKeyAvailable,
+                    onConfigureClick = onNavigateToSettings
+                )
             }
 
             // Large Hero Bento Card: Active Goal or Start Study Plan Campaign block
@@ -116,7 +122,7 @@ fun DashboardScreen(
                         )
                         BentoStatTile(
                             emoji = "🔥",
-                            value = "${sessions.size} dias",
+                            value = "$dailyStreak ${if (dailyStreak == 1) "dia" else "dias"}",
                             label = "Daily Streak",
                             containerColor = BentoGrayishViolet,
                             textColor = BentoPrimaryDark,
@@ -320,13 +326,13 @@ fun DashboardScreen(
 }
 
 @Composable
-fun BentoHeader(email: String) {
-    val initials = remember(email) {
-        val clean = email.split("@").firstOrNull() ?: "FB"
-        if (clean.length >= 2) {
-            clean.take(2).uppercase()
-        } else {
-            "FB"
+fun BentoHeader(displayName: String = "", onSettingsClick: () -> Unit = {}) {
+    val initials = remember(displayName) {
+        val clean = displayName.trim()
+        when {
+            clean.length >= 2 -> clean.take(2).uppercase()
+            clean.length == 1 -> clean.uppercase()
+            else -> "FB"
         }
     }
     Row(
@@ -353,31 +359,50 @@ fun BentoHeader(email: String) {
                 letterSpacing = 1.5.sp
             )
         }
-        Box(
-            modifier = Modifier
-                .size(44.dp)
-                .clip(RoundedCornerShape(22.dp))
-                .background(BentoPrimaryLight)
-                .border(
-                    width = 1.dp,
-                    color = BentoMediumLavender,
-                    shape = RoundedCornerShape(22.dp)
-                ),
-            contentAlignment = Alignment.Center
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text(
-                text = initials,
-                fontWeight = FontWeight.Black,
-                color = BentoPrimaryDark,
-                fontSize = 15.sp,
-                letterSpacing = (-0.25).sp
-            )
+            IconButton(
+                onClick = onSettingsClick,
+                modifier = Modifier
+                    .size(36.dp)
+                    .background(BentoGrayishViolet, RoundedCornerShape(12.dp))
+                    .testTag("nav_settings_button")
+            ) {
+                Icon(
+                    Icons.Default.Settings,
+                    contentDescription = "Configurações",
+                    tint = BentoPrimaryDark,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(RoundedCornerShape(22.dp))
+                    .background(BentoPrimaryLight)
+                    .border(
+                        width = 1.dp,
+                        color = BentoMediumLavender,
+                        shape = RoundedCornerShape(22.dp)
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = initials,
+                    fontWeight = FontWeight.Black,
+                    color = BentoPrimaryDark,
+                    fontSize = 15.sp,
+                    letterSpacing = (-0.25).sp
+                )
+            }
         }
     }
 }
 
 @Composable
-fun ApiKeyStatusBanner(isAvailable: Boolean) {
+fun ApiKeyStatusBanner(isAvailable: Boolean, onConfigureClick: () -> Unit = {}) {
     if (!isAvailable) {
         Surface(
             color = BentoPink,
@@ -416,11 +441,24 @@ fun ApiKeyStatusBanner(isAvailable: Boolean) {
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = "Nenhuma chave API configurada no AI Studio. Os módulos usarão geradores de síntese locais de modo off-line.",
+                        text = "Nenhuma chave API configurada. Os módulos usarão geradores locais de modo off-line.",
                         fontSize = 11.sp,
                         color = BentoPrimaryDark.copy(alpha = 0.75f),
                         lineHeight = 15.sp
                     )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    TextButton(
+                        onClick = onConfigureClick,
+                        contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp),
+                        modifier = Modifier.height(24.dp)
+                    ) {
+                        Text(
+                            text = "Configurar Chave API →",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = BentoPrimaryDark
+                        )
+                    }
                 }
             }
         }

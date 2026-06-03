@@ -156,12 +156,17 @@ class StudyRepository(private val studyDao: StudyDao) {
         return if (GeminiClient.isApiKeyAvailable()) {
             val systemInstruction = "Você é um mentor acadêmico altamente experiente em planos de estudo personalizados."
             val contestSection = if (contestContext != null) {
-                """
-                O plano de estudos deve levar em consideração o seguinte edital ou concurso:
-                - Nome do concurso: ${contestContext.name}
-                - Banca Organizadora: ${contestContext.organizer}
-                - Outras anotações do concurso: ${contestContext.notes}
-                """.trimIndent()
+                buildString {
+                    appendLine("O plano de estudos deve levar em consideração o seguinte edital ou concurso:")
+                    appendLine("- Nome do concurso: ${contestContext.name}")
+                    if (contestContext.organizer.isNotBlank()) appendLine("- Banca Organizadora: ${contestContext.organizer}")
+                    if (contestContext.examDate.isNotBlank()) appendLine("- Data prevista da prova: ${contestContext.examDate}")
+                    if (contestContext.editalText.isNotBlank()) {
+                        appendLine("- Conteúdo programático do edital:")
+                        appendLine(contestContext.editalText)
+                    }
+                    if (contestContext.notes.isNotBlank()) appendLine("- Anotações adicionais: ${contestContext.notes}")
+                }.trimEnd()
             } else ""
 
             val prompt = """
