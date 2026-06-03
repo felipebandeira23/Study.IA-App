@@ -14,6 +14,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import android.content.Intent
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -35,6 +37,7 @@ fun StudyPlanScreen(
     val plans by viewModel.allPlans.collectAsState()
     val contests by viewModel.allContests.collectAsState()
     val planCreationState by viewModel.planState.collectAsState()
+    val context = LocalContext.current
 
     var activeTab by remember { mutableIntStateOf(0) } // 0 = Gerar, 1 = Roteiros Ativos
     var titleInput by remember { mutableStateOf("") }
@@ -361,7 +364,16 @@ fun StudyPlanScreen(
                             items(plans) { plan ->
                                 ActivePlanCard(
                                     plan = plan,
-                                    onDelete = { viewModel.deletePlan(plan.id) }
+                                    onDelete = { viewModel.deletePlan(plan.id) },
+                                    onShare = {
+                                        val text = formatPlanForShare(plan)
+                                        val intent = Intent(Intent.ACTION_SEND).apply {
+                                            type = "text/plain"
+                                            putExtra(Intent.EXTRA_SUBJECT, "Plano de Estudos — ${plan.topic}")
+                                            putExtra(Intent.EXTRA_TEXT, text)
+                                        }
+                                        context.startActivity(Intent.createChooser(intent, "Compartilhar plano"))
+                                    }
                                 )
                             }
                         }
@@ -469,10 +481,18 @@ fun PlanOutputSuccessBanner(
     }
 }
 
+private fun formatPlanForShare(plan: StudyPlan): String = buildString {
+    appendLine("📚 Plano de Estudos — ${plan.topic}")
+    appendLine("Nível: ${plan.level} | Duração: ${plan.durationDays} dias")
+    appendLine()
+    appendLine(plan.planContent)
+}
+
 @Composable
 fun ActivePlanCard(
     plan: StudyPlan,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onShare: () -> Unit = {}
 ) {
     var isExpanded by remember { mutableStateOf(false) }
     var showConfirmDelete by remember { mutableStateOf(false) }
@@ -537,6 +557,13 @@ fun ActivePlanCard(
                         Icon(
                             imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
                             contentDescription = "Expandir"
+                        )
+                    }
+                    IconButton(onClick = onShare, modifier = Modifier.testTag("share_plan_${plan.id}")) {
+                        Icon(
+                            imageVector = Icons.Default.Share,
+                            contentDescription = "Compartilhar plano",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
                         )
                     }
                     IconButton(onClick = { showConfirmDelete = true }) {

@@ -93,6 +93,7 @@ class MainActivity : ComponentActivity() {
                                 onNavigateToPlans = { navController.navigate("plans") },
                                 onNavigateToContests = { navController.navigate("contests") },
                                 onNavigateToSettings = { navController.navigate("settings") },
+                                onNavigateToAnalytics = { navController.navigate("analytics") },
                                 displayName = userName
                             )
                         }
@@ -149,6 +150,14 @@ class MainActivity : ComponentActivity() {
                         composable("settings") {
                             SettingsScreen(
                                 viewModel = settingsViewModel,
+                                onBack = { navController.popBackStack() }
+                            )
+                        }
+
+                        // 8. Analytics Screen
+                        composable("analytics") {
+                            AnalyticsScreen(
+                                viewModel = viewModel,
                                 onBack = { navController.popBackStack() }
                             )
                         }

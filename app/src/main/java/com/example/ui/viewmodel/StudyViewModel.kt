@@ -43,6 +43,43 @@ class StudyViewModel(private val repository: StudyRepository) : ViewModel() {
         .map { sessions -> calculateStreak(sessions) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
+    data class DeckStats(val deckId: Int, val deckName: String, val totalReviews: Int, val lastReviewAt: Long)
+
+    val deckStats: StateFlow<List<DeckStats>> = combine(
+        repository.allSessions, repository.allDecks
+    ) { sessions, decks ->
+        val deckMap = decks.associateBy { it.id }
+        sessions.groupBy { it.deckId }
+            .map { (deckId, s) ->
+                DeckStats(
+                    deckId = deckId,
+                    deckName = deckMap[deckId]?.name ?: "Deck #$deckId",
+                    totalReviews = s.sumOf { it.cardsReviewed },
+                    lastReviewAt = s.maxOf { it.date }
+                )
+            }
+            .sortedByDescending { it.totalReviews }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val weeklyActivity: StateFlow<Map<Long, Int>> = repository.allSessions
+        .map { sessions ->
+            val cutoff = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(27)
+            sessions.filter { it.date >= cutoff }
+                .groupBy { truncateToDay(it.date) }
+                .mapValues { (_, s) -> s.size }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
+
+    val sessionAccuracyHistory: StateFlow<List<Pair<Long, Int>>> = repository.allSessions
+        .map { sessions ->
+            sessions.sortedByDescending { it.date }
+                .take(14)
+                .reversed()
+                .map { s ->
+                    val acc = if (s.cardsReviewed > 0) (s.correctAnswers * 100 / s.cardsReviewed) else 0
+                    s.date to acc
+                }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     // UI generation states
     private val _summaryState = MutableStateFlow<UiState<String>>(UiState.Idle)
     val summaryState: StateFlow<UiState<String>> = _summaryState.asStateFlow()
@@ -199,19 +236,19 @@ class StudyViewModel(private val repository: StudyRepository) : ViewModel() {
         }
     }
 
+    private fun truncateToDay(epochMs: Long): Long {
+        val cal = Calendar.getInstance().apply { timeInMillis = epochMs }
+        cal.set(Calendar.HOUR_OF_DAY, 0)
+        cal.set(Calendar.MINUTE, 0)
+        cal.set(Calendar.SECOND, 0)
+        cal.set(Calendar.MILLISECOND, 0)
+        return cal.timeInMillis
+    }
+
     private fun calculateStreak(sessions: List<StudySession>): Int {
         if (sessions.isEmpty()) return 0
 
         val oneDayMs = TimeUnit.DAYS.toMillis(1)
-
-        fun truncateToDay(epochMs: Long): Long {
-            val cal = Calendar.getInstance().apply { timeInMillis = epochMs }
-            cal.set(Calendar.HOUR_OF_DAY, 0)
-            cal.set(Calendar.MINUTE, 0)
-            cal.set(Calendar.SECOND, 0)
-            cal.set(Calendar.MILLISECOND, 0)
-            return cal.timeInMillis
-        }
 
         val todayStart = truncateToDay(System.currentTimeMillis())
         val yesterdayStart = todayStart - oneDayMs

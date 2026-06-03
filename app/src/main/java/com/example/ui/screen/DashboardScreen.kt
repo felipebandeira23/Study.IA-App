@@ -51,6 +51,7 @@ fun DashboardScreen(
     onNavigateToPlans: () -> Unit,
     onNavigateToContests: () -> Unit,
     onNavigateToSettings: () -> Unit = {},
+    onNavigateToAnalytics: () -> Unit = {},
     displayName: String = "",
     modifier: Modifier = Modifier
 ) {
@@ -151,6 +152,21 @@ fun DashboardScreen(
                             modifier = Modifier.weight(1f)
                         )
                     }
+                }
+            }
+            item {
+                TextButton(
+                    onClick = onNavigateToAnalytics,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("nav_analytics_button")
+                ) {
+                    Text(
+                        "Ver Análise Completa →",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = BentoPrimary
+                    )
                 }
             }
 
