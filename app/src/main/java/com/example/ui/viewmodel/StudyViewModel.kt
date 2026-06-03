@@ -122,6 +122,18 @@ class StudyViewModel(private val repository: StudyRepository) : ViewModel() {
         return repository.getFlashcardsForDeck(deckId)
     }
 
+    suspend fun getDueFlashcardsForDeck(deckId: Int): List<Flashcard> {
+        return repository.getDueFlashcardsForDeck(deckId)
+    }
+
+    fun getDueCountForDeck(deckId: Int): Flow<Int> = repository.getDueCountForDeck(deckId)
+
+    fun reviewCard(flashcard: Flashcard, quality: Int) {
+        viewModelScope.launch {
+            repository.updateCardAfterReview(flashcard, quality)
+        }
+    }
+
     // --- Study Plan Actions ---
     fun createStudyPlan(topic: String, durationDays: Int, level: String, contestId: Int?) {
         viewModelScope.launch {

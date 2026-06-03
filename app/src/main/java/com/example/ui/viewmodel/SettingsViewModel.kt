@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.example.data.preferences.UserPreferencesRepository
 import com.example.data.remote.GeminiClient
+import com.example.worker.DailyStudyReminderWorker
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
@@ -26,6 +27,15 @@ class SettingsViewModel(
 
     val hasCompletedOnboarding: StateFlow<Boolean> = prefsRepository.hasCompletedOnboarding
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    val remindersEnabled: StateFlow<Boolean> = prefsRepository.remindersEnabled
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    val reminderHour: StateFlow<Int> = prefsRepository.reminderHour
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 20)
+
+    val reminderMinute: StateFlow<Int> = prefsRepository.reminderMinute
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
     private val _testConnectionState = MutableStateFlow<UiState<String>>(UiState.Idle)
     val testConnectionState: StateFlow<UiState<String>> = _testConnectionState.asStateFlow()
@@ -70,6 +80,18 @@ class SettingsViewModel(
 
     fun resetTestState() {
         _testConnectionState.value = UiState.Idle
+    }
+
+    fun saveReminderSettings(enabled: Boolean, hour: Int, minute: Int) {
+        viewModelScope.launch {
+            prefsRepository.saveReminderSettings(enabled, hour, minute)
+            val context = getApplication<Application>()
+            if (enabled) {
+                DailyStudyReminderWorker.schedule(context, hour, minute)
+            } else {
+                DailyStudyReminderWorker.cancel(context)
+            }
+        }
     }
 
     fun clearAllData() {

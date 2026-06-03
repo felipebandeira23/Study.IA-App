@@ -60,15 +60,30 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
+            val hasCompletedOnboarding by settingsViewModel.hasCompletedOnboarding.collectAsStateWithLifecycle()
+
             MyApplicationTheme(darkTheme = isDarkMode) {
                 val navController = rememberNavController()
+                val startDestination = if (hasCompletedOnboarding) "dashboard" else "onboarding"
 
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
                     NavHost(
                         navController = navController,
-                        startDestination = "dashboard",
+                        startDestination = startDestination,
                         modifier = Modifier.padding(innerPadding)
                     ) {
+                        // Onboarding (first run)
+                        composable("onboarding") {
+                            OnboardingScreen(
+                                viewModel = settingsViewModel,
+                                onComplete = {
+                                    navController.navigate("dashboard") {
+                                        popUpTo("onboarding") { inclusive = true }
+                                    }
+                                }
+                            )
+                        }
+
                         // 1. Dashboard Landing Home
                         composable("dashboard") {
                             DashboardScreen(

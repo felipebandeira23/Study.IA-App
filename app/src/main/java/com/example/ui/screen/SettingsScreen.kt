@@ -39,11 +39,16 @@ fun SettingsScreen(
     val savedUserName by viewModel.userName.collectAsState()
     val isDarkMode by viewModel.isDarkMode.collectAsState()
     val testState by viewModel.testConnectionState.collectAsState()
+    val remindersEnabled by viewModel.remindersEnabled.collectAsState()
+    val reminderHour by viewModel.reminderHour.collectAsState()
+    val reminderMinute by viewModel.reminderMinute.collectAsState()
 
     var apiKeyInput by remember(savedApiKey) { mutableStateOf(savedApiKey) }
     var userNameInput by remember(savedUserName) { mutableStateOf(savedUserName) }
     var showApiKey by remember { mutableStateOf(false) }
     var showClearDataDialog by remember { mutableStateOf(false) }
+    var reminderHourInput by remember(reminderHour) { mutableStateOf(reminderHour.toString()) }
+    var reminderMinuteInput by remember(reminderMinute) { mutableStateOf(reminderMinute.toString().padStart(2, '0')) }
 
     DisposableEffect(Unit) {
         onDispose { viewModel.resetTestState() }
@@ -236,6 +241,96 @@ fun SettingsScreen(
                             onCheckedChange = { viewModel.saveDarkMode(it) },
                             modifier = Modifier.testTag("settings_dark_mode_switch")
                         )
+                    }
+                }
+            }
+
+            // --- Notificações ---
+            item {
+                Spacer(modifier = Modifier.height(4.dp))
+                SettingsSectionHeader(emoji = "🔔", title = "Notificações")
+            }
+            item {
+                Surface(
+                    color = MaterialTheme.colorScheme.surface,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(BentoSoftViolet),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(Icons.Default.Notifications, contentDescription = null, tint = BentoPrimaryDark, modifier = Modifier.size(18.dp))
+                                }
+                                Column {
+                                    Text("Lembrete Diário", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = BentoTextDark)
+                                    Text("Notificação para estudar todo dia", fontSize = 11.sp, color = BentoTextMuted)
+                                }
+                            }
+                            Switch(
+                                checked = remindersEnabled,
+                                onCheckedChange = {
+                                    val h = reminderHourInput.toIntOrNull()?.coerceIn(0, 23) ?: reminderHour
+                                    val m = reminderMinuteInput.toIntOrNull()?.coerceIn(0, 59) ?: reminderMinute
+                                    viewModel.saveReminderSettings(it, h, m)
+                                },
+                                modifier = Modifier.testTag("settings_reminders_switch")
+                            )
+                        }
+                        AnimatedVisibility(visible = remindersEnabled) {
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Text("Horário do lembrete", fontSize = 12.sp, color = BentoTextMuted, fontWeight = FontWeight.Medium)
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    OutlinedTextField(
+                                        value = reminderHourInput,
+                                        onValueChange = { v -> if (v.length <= 2 && v.all { it.isDigit() }) reminderHourInput = v },
+                                        label = { Text("Hora") },
+                                        modifier = Modifier.weight(1f).testTag("settings_reminder_hour"),
+                                        shape = RoundedCornerShape(10.dp),
+                                        singleLine = true,
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                                    )
+                                    Text(":", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = BentoTextDark)
+                                    OutlinedTextField(
+                                        value = reminderMinuteInput,
+                                        onValueChange = { v -> if (v.length <= 2 && v.all { it.isDigit() }) reminderMinuteInput = v },
+                                        label = { Text("Minuto") },
+                                        modifier = Modifier.weight(1f).testTag("settings_reminder_minute"),
+                                        shape = RoundedCornerShape(10.dp),
+                                        singleLine = true,
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                                    )
+                                    Button(
+                                        onClick = {
+                                            val h = reminderHourInput.toIntOrNull()?.coerceIn(0, 23) ?: reminderHour
+                                            val m = reminderMinuteInput.toIntOrNull()?.coerceIn(0, 59) ?: reminderMinute
+                                            viewModel.saveReminderSettings(true, h, m)
+                                        },
+                                        shape = RoundedCornerShape(10.dp),
+                                        modifier = Modifier.testTag("settings_reminder_save")
+                                    ) {
+                                        Text("Salvar")
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
