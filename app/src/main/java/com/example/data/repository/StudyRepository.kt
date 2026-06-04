@@ -213,6 +213,128 @@ class StudyRepository(private val studyDao: StudyDao) {
     }
 
     /**
+     * Fetches current open contests matching the user's UF and areas via Google Search Grounding.
+     */
+    suspend fun fetchContestNews(uf: String, areas: List<String>): List<ContestNewsItem> {
+        if (!GeminiClient.isApiKeyAvailable()) return getMockContestNews(uf, areas)
+
+        val areasLabel = if (areas.isEmpty()) "geral" else areas.joinToString(", ")
+        val ufLabel    = uf.ifBlank { "todo o Brasil" }
+
+        val prompt = """
+            Busque os concursos públicos com inscrições abertas ou com edital previsto para abertura em breve no Brasil, especialmente no estado $ufLabel e concursos federais/nacionais. Filtre pelas seguintes áreas de atuação: $areasLabel.
+
+            Retorne APENAS um array JSON válido com até 10 concursos, sem texto adicional antes ou depois. Cada objeto deve ter exatamente estes campos:
+            [
+              {
+                "titulo": "Nome do concurso e órgão",
+                "area": "área principal",
+                "resumo": "Breve descrição do cargo e requisitos em até 2 linhas",
+                "dataProva": "dd/MM/yyyy ou A definir",
+                "salario": "R$ X.XXX,XX ou A confirmar",
+                "vagas": "número ou A confirmar",
+                "prazoInscricao": "dd/MM/yyyy ou A definir",
+                "nacional": true
+              }
+            ]
+            Comece com '[' e termine com ']'. Não use blocos de código markdown.
+        """.trimIndent()
+
+        return try {
+            val raw = GeminiClient.fetchWithSearch(prompt)
+            parseContestNewsJson(raw)
+        } catch (e: Exception) {
+            getMockContestNews(uf, areas)
+        }
+    }
+
+    /**
+     * Auto-fills contest details (organizer, date, salary, vacancies, edital) via Search Grounding.
+     */
+    suspend fun fetchContestAutoFill(contestName: String): ContestAutoFill {
+        if (!GeminiClient.isApiKeyAvailable()) return ContestAutoFill(
+            organizer = "Configure a API Key para buscar automaticamente"
+        )
+
+        val prompt = """
+            Busque informações atuais e precisas sobre o concurso público: "$contestName".
+
+            Retorne APENAS um objeto JSON válido com exatamente estes campos, sem texto antes ou depois:
+            {
+              "banca": "nome da banca organizadora",
+              "dataProva": "dd/MM/yyyy ou A definir",
+              "salario": "R$ X.XXX,XX",
+              "vagas": "número de vagas",
+              "conteudoProgramatico": "lista completa de matérias e tópicos cobrados no edital"
+            }
+            Comece com '{' e termine com '}'. Não use blocos de código markdown.
+        """.trimIndent()
+
+        return try {
+            val raw = GeminiClient.fetchWithSearch(prompt)
+            parseContestAutoFillJson(raw)
+        } catch (e: Exception) {
+            ContestAutoFill(organizer = "Erro ao buscar: ${e.message?.take(80)}")
+        }
+    }
+
+    private fun parseContestNewsJson(raw: String): List<ContestNewsItem> {
+        val items = mutableListOf<ContestNewsItem>()
+        try {
+            val cleaned = raw.trim()
+                .removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
+            val arr = JSONArray(cleaned)
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                items.add(
+                    ContestNewsItem(
+                        title               = o.optString("titulo", "Concurso"),
+                        area                = o.optString("area", "Geral"),
+                        summary             = o.optString("resumo", ""),
+                        examDate            = o.optString("dataProva", "A definir"),
+                        salary              = o.optString("salario", ""),
+                        vacancies           = o.optString("vagas", ""),
+                        inscriptionDeadline = o.optString("prazoInscricao", "A definir"),
+                        isNational          = o.optBoolean("nacional", false)
+                    )
+                )
+            }
+        } catch (_: Exception) {}
+        return items
+    }
+
+    private fun parseContestAutoFillJson(raw: String): ContestAutoFill {
+        return try {
+            val cleaned = raw.trim()
+                .removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
+            val o = JSONObject(cleaned)
+            ContestAutoFill(
+                organizer    = o.optString("banca", ""),
+                examDate     = o.optString("dataProva", ""),
+                salary       = o.optString("salario", ""),
+                vacancies    = o.optString("vagas", ""),
+                editalContent = o.optString("conteudoProgramatico", "")
+            )
+        } catch (e: Exception) {
+            ContestAutoFill(organizer = "Erro ao interpretar resposta da IA")
+        }
+    }
+
+    private fun getMockContestNews(uf: String, areas: List<String>): List<ContestNewsItem> {
+        return listOf(
+            ContestNewsItem(
+                title = "[Modo Offline] Concurso Exemplo — ${uf.ifBlank { "Federal" }}",
+                area = areas.firstOrNull() ?: "Geral",
+                summary = "Configure a chave da API Gemini para ver concursos reais com inscrições abertas na sua região.",
+                examDate = "A definir",
+                salary = "A confirmar",
+                vacancies = "—",
+                isNational = true
+            )
+        )
+    }
+
+    /**
      * Answers a user question using the note content as context.
      */
     suspend fun askAboutNote(question: String, noteContext: String): String {

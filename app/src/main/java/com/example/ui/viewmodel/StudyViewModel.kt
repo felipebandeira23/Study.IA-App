@@ -9,6 +9,7 @@ import com.example.data.remote.GeminiClient
 import com.example.data.repository.StudyRepository
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import org.json.JSONArray
 import java.util.Calendar
 
 sealed interface UiState<out T> {
@@ -58,6 +59,28 @@ class StudyViewModel(
     // Daily card goal from DataStore (default 20)
     val dailyCardGoal: StateFlow<Int> = prefsRepository.dailyCardGoal
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 20)
+
+    // User profile fields from DataStore
+    val userName: StateFlow<String> = prefsRepository.userName
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
+    val userUf: StateFlow<String> = prefsRepository.ufState
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
+    val academicBackground: StateFlow<String> = prefsRepository.academicBackground
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
+    val areasOfInterestJson: StateFlow<String> = prefsRepository.areasOfInterest
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "[]")
+    val hasCompletedProfile: StateFlow<Boolean> = prefsRepository.hasCompletedProfile
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    // Contest news feed
+    private val _contestNewsState = MutableStateFlow<UiState<List<ContestNewsItem>>>(UiState.Idle)
+    val contestNewsState: StateFlow<UiState<List<ContestNewsItem>>> = _contestNewsState.asStateFlow()
+
+    // Contest auto-fill
+    private val _autoFillState = MutableStateFlow<UiState<ContestAutoFill>>(UiState.Idle)
+    val autoFillState: StateFlow<UiState<ContestAutoFill>> = _autoFillState.asStateFlow()
+
+    private var lastNewsRefreshMs = 0L
 
     // UI generation states
     private val _summaryState = MutableStateFlow<UiState<String>>(UiState.Idle)
@@ -268,6 +291,62 @@ class StudyViewModel(
         if (goal <= 0) return
         viewModelScope.launch { prefsRepository.setDailyCardGoal(goal) }
     }
+
+    // --- User Profile ---
+    fun saveProfile(name: String, academicBg: String, areasJson: String, uf: String) {
+        viewModelScope.launch {
+            prefsRepository.saveProfile(name, academicBg, areasJson, uf)
+            refreshContestNews(force = true)
+        }
+    }
+
+    fun updateUf(uf: String) {
+        viewModelScope.launch { prefsRepository.updateUf(uf) }
+    }
+
+    /** Parses the stored JSON array of area keys into a readable list. */
+    fun areasFromJson(json: String): List<String> {
+        return try {
+            val arr = JSONArray(json)
+            (0 until arr.length()).map { arr.getString(it) }
+        } catch (_: Exception) { emptyList() }
+    }
+
+    // --- Contest News Feed ---
+    fun refreshContestNews(force: Boolean = false) {
+        val now = System.currentTimeMillis()
+        val thirtyMinutes = 30 * 60 * 1000L
+        if (!force && now - lastNewsRefreshMs < thirtyMinutes && _contestNewsState.value is UiState.Success) return
+
+        viewModelScope.launch {
+            _contestNewsState.value = UiState.Loading
+            try {
+                val uf    = userUf.value
+                val areas = areasFromJson(areasOfInterestJson.value)
+                val news  = repository.fetchContestNews(uf, areas)
+                _contestNewsState.value = UiState.Success(news)
+                lastNewsRefreshMs = System.currentTimeMillis()
+            } catch (e: Exception) {
+                _contestNewsState.value = UiState.Error(e.message ?: "Erro ao buscar concursos")
+            }
+        }
+    }
+
+    // --- Contest Auto-Fill ---
+    fun autoFillContest(contestName: String) {
+        if (contestName.isBlank()) return
+        viewModelScope.launch {
+            _autoFillState.value = UiState.Loading
+            try {
+                val result = repository.fetchContestAutoFill(contestName)
+                _autoFillState.value = UiState.Success(result)
+            } catch (e: Exception) {
+                _autoFillState.value = UiState.Error(e.message ?: "Erro ao buscar dados do concurso")
+            }
+        }
+    }
+
+    fun resetAutoFillState() { _autoFillState.value = UiState.Idle }
 
     // --- Session Stats Recording ---
     fun saveSessionStats(deckId: Int, cardsReviewed: Int, correctAnswers: Int) {

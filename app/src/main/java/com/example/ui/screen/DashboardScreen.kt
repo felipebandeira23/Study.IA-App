@@ -27,9 +27,11 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.model.ContestNewsItem
 import com.example.data.model.TrackedContest
 import com.example.data.model.StudyPlan
 import com.example.ui.viewmodel.StudyViewModel
+import com.example.ui.viewmodel.UiState
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
@@ -74,6 +76,7 @@ fun DashboardScreen(
     onNavigateToPlans: () -> Unit,
     onNavigateToContests: () -> Unit,
     onNavigateToReviewAll: () -> Unit,
+    onNavigateToProfile: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val notes by viewModel.allNotes.collectAsState()
@@ -84,6 +87,11 @@ fun DashboardScreen(
     val allFlashcards by viewModel.allFlashcards.collectAsState()
     val cardsToday by viewModel.cardsReviewedToday.collectAsState()
     val dailyGoal by viewModel.dailyCardGoal.collectAsState()
+    val userName by viewModel.userName.collectAsState()
+    val contestNewsState by viewModel.contestNewsState.collectAsState()
+
+    // Trigger news fetch on first load
+    LaunchedEffect(Unit) { viewModel.refreshContestNews() }
 
     val totalReviewedCards = sessions.sumOf { it.cardsReviewed }
     val totalCorrectReviews = sessions.sumOf { it.correctAnswers }
@@ -115,7 +123,10 @@ fun DashboardScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             item {
-                BentoHeader(email = "felipe.bandeira1@gmail.com")
+                BentoHeader(
+                    userName = userName,
+                    onProfileClick = onNavigateToProfile
+                )
             }
 
             // Countdown banner for nearest upcoming contest
@@ -367,6 +378,75 @@ fun DashboardScreen(
                 }
             }
 
+            // ── Feed de concursos em aberto ──────────────────────────────
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 12.dp, bottom = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "📰 Concursos em Aberto",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Black,
+                        color = BentoPrimaryDark,
+                        letterSpacing = (-0.5).sp
+                    )
+                    IconButton(
+                        onClick = { viewModel.refreshContestNews(force = true) },
+                        modifier = Modifier
+                            .background(BentoPrimaryLight, RoundedCornerShape(12.dp))
+                            .size(36.dp)
+                    ) {
+                        Icon(Icons.Default.Refresh, contentDescription = "Atualizar feed", tint = BentoPrimaryDark, modifier = Modifier.size(18.dp))
+                    }
+                }
+            }
+
+            when (val news = contestNewsState) {
+                is UiState.Loading -> item {
+                    Box(modifier = Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            CircularProgressIndicator(color = BentoPrimary)
+                            Text("Buscando concursos na sua região…", fontSize = 13.sp, color = BentoTextMuted)
+                        }
+                    }
+                }
+                is UiState.Success -> {
+                    if (news.data.isEmpty()) {
+                        item {
+                            Text(
+                                "Nenhum concurso encontrado para seu perfil no momento.",
+                                modifier = Modifier.padding(vertical = 16.dp),
+                                color = BentoTextMuted,
+                                fontSize = 13.sp
+                            )
+                        }
+                    } else {
+                        items(news.data) { item -> ContestNewsCard(item) }
+                    }
+                }
+                is UiState.Error -> item {
+                    Surface(color = MaterialTheme.colorScheme.errorContainer, shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
+                        Text(news.message, modifier = Modifier.padding(12.dp), color = MaterialTheme.colorScheme.onErrorContainer, fontSize = 12.sp)
+                    }
+                }
+                is UiState.Idle -> item {
+                    Text(
+                        "Complete seu perfil para ver concursos personalizados →",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onNavigateToProfile() }
+                            .padding(vertical = 16.dp),
+                        color = BentoPrimary,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
             item { Spacer(modifier = Modifier.height(36.dp)) }
         }
     }
@@ -408,6 +488,56 @@ fun DashboardScreen(
                 TextButton(onClick = { showDailyGoalDialog = false }) { Text("Cancelar") }
             }
         )
+    }
+}
+
+@Composable
+fun ContestNewsCard(item: ContestNewsItem) {
+    ElevatedCard(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 1.dp)
+    ) {
+        Column(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
+                Text(item.title, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = BentoPrimaryDark, modifier = Modifier.weight(1f))
+                if (item.isNational) {
+                    Surface(color = BentoSoftViolet, shape = RoundedCornerShape(6.dp)) {
+                        Text("Federal", fontSize = 9.sp, fontWeight = FontWeight.Black, color = BentoPrimaryDark, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+                    }
+                }
+            }
+            Surface(color = BentoPrimaryLight, shape = RoundedCornerShape(6.dp)) {
+                Text(item.area, fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, color = BentoPrimaryDark, modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp))
+            }
+            if (item.summary.isNotBlank()) {
+                Text(item.summary, fontSize = 12.sp, color = BentoTextMuted, lineHeight = 17.sp)
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                if (item.examDate.isNotBlank() && item.examDate != "A definir") {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Icon(Icons.Default.CalendarToday, contentDescription = null, modifier = Modifier.size(12.dp), tint = BentoTextMuted)
+                        Text("Prova: ${item.examDate}", fontSize = 11.sp, color = BentoTextMuted)
+                    }
+                }
+                if (item.salary.isNotBlank()) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Icon(Icons.Default.AttachMoney, contentDescription = null, modifier = Modifier.size(12.dp), tint = BentoTextMuted)
+                        Text(item.salary, fontSize = 11.sp, color = BentoTextMuted)
+                    }
+                }
+                if (item.vacancies.isNotBlank()) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Icon(Icons.Default.People, contentDescription = null, modifier = Modifier.size(12.dp), tint = BentoTextMuted)
+                        Text("${item.vacancies} vagas", fontSize = 11.sp, color = BentoTextMuted)
+                    }
+                }
+            }
+            if (item.inscriptionDeadline.isNotBlank() && item.inscriptionDeadline != "A definir") {
+                Text("📝 Inscrições até ${item.inscriptionDeadline}", fontSize = 11.sp, color = BentoPrimary, fontWeight = FontWeight.SemiBold)
+            }
+        }
     }
 }
 
@@ -555,10 +685,13 @@ fun DailyGoalReviewCard(
 }
 
 @Composable
-fun BentoHeader(email: String) {
-    val initials = remember(email) {
-        val clean = email.split("@").firstOrNull() ?: "FB"
-        if (clean.length >= 2) clean.take(2).uppercase() else "FB"
+fun BentoHeader(
+    userName: String,
+    onProfileClick: () -> Unit
+) {
+    val initials = remember(userName) {
+        if (userName.isBlank()) "?"
+        else userName.trim().split(" ").take(2).joinToString("") { it.first().uppercase() }.take(2)
     }
     Row(
         modifier = Modifier
@@ -577,7 +710,7 @@ fun BentoHeader(email: String) {
             )
             Spacer(modifier = Modifier.height(2.dp))
             Text(
-                text = "PERSONAL LEARNING PATH",
+                text = if (userName.isNotBlank()) "Olá, $userName!" else "PERSONAL LEARNING PATH",
                 fontSize = 10.sp,
                 fontWeight = FontWeight.ExtraBold,
                 color = BentoTextMuted,
@@ -589,7 +722,8 @@ fun BentoHeader(email: String) {
                 .size(44.dp)
                 .clip(RoundedCornerShape(22.dp))
                 .background(BentoPrimaryLight)
-                .border(1.dp, BentoMediumLavender, RoundedCornerShape(22.dp)),
+                .border(1.dp, BentoMediumLavender, RoundedCornerShape(22.dp))
+                .clickable(onClick = onProfileClick),
             contentAlignment = Alignment.Center
         ) {
             Text(

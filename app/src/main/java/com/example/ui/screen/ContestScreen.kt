@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.sp
 import com.example.data.model.EditalTopic
 import com.example.data.model.TrackedContest
 import com.example.ui.viewmodel.StudyViewModel
+import com.example.ui.viewmodel.UiState
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -32,12 +33,37 @@ fun ContestScreen(
     modifier: Modifier = Modifier
 ) {
     val contests by viewModel.allContests.collectAsState()
+    val autoFillState by viewModel.autoFillState.collectAsState()
 
     var nameInput by remember { mutableStateOf("") }
     var organizerInput by remember { mutableStateOf("") }
     var examDateInput by remember { mutableStateOf("") }
     var editalInput by remember { mutableStateOf("") }
     var notesInput by remember { mutableStateOf("") }
+
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    // When auto-fill succeeds, populate the form fields
+    LaunchedEffect(autoFillState) {
+        if (autoFillState is UiState.Success) {
+            val fill = (autoFillState as UiState.Success).data
+            if (fill.organizer.isNotBlank()) organizerInput = fill.organizer
+            if (fill.examDate.isNotBlank()) examDateInput = fill.examDate
+            if (fill.editalContent.isNotBlank()) editalInput = buildString {
+                if (fill.salary.isNotBlank()) append("Salário: ${fill.salary}\nVagas: ${fill.vacancies}\n\n")
+                append(fill.editalContent)
+            }
+            snackbarHostState.showSnackbar("✅ Dados preenchidos automaticamente!")
+            viewModel.resetAutoFillState()
+        } else if (autoFillState is UiState.Error) {
+            snackbarHostState.showSnackbar("❌ ${(autoFillState as UiState.Error).message}")
+            viewModel.resetAutoFillState()
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose { viewModel.resetAutoFillState() }
+    }
 
     Scaffold(
         topBar = {
@@ -50,7 +76,8 @@ fun ContestScreen(
                 }
             )
         },
-        modifier = modifier.fillMaxSize()
+        modifier = modifier.fillMaxSize(),
+        snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { innerPadding ->
         LazyColumn(
             modifier = Modifier
@@ -84,6 +111,26 @@ fun ContestScreen(
                     shape = RoundedCornerShape(8.dp),
                     singleLine = true
                 )
+            }
+
+            // Auto-fill button
+            item {
+                FilledTonalButton(
+                    onClick = { viewModel.autoFillContest(nameInput) },
+                    enabled = nameInput.isNotBlank() && autoFillState !is UiState.Loading,
+                    modifier = Modifier.fillMaxWidth().height(44.dp),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    if (autoFillState is UiState.Loading) {
+                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Buscando dados do concurso…")
+                    } else {
+                        Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("🔍 Buscar dados automaticamente via IA")
+                    }
+                }
             }
 
             item {
